@@ -107,32 +107,6 @@ fn main() {
 
         pty_execute(&mut master_file, command1);
 
-
-        // // Get the command user input.
-        // // For example: only "touch /home/hzb/Desktop/itworks".
-        // let mut display = String::new();
-        // master_file.read_to_string(&mut display).unwrap();
-        // println!("master file descriptor: {}", display);
-
         std::process::exit(0);
-
-
-        // Buffer.
-        // let mut read_buffer: Vec<u8> = vec![];
-        
-        // // Constantly loop through contents if read_from_fd returns content.
-        // loop {
-        //     match read_from_fd(master_pty.mfd) {
-        //         // Add to the buffer with contents.
-        //         Some(mut read_bytes) => {
-        //             read_buffer.append(&mut read_bytes);
-        //             println!("Some");
-        //         },
-        //         None => {
-        //             println!("{:?}", String::from_utf8(read_buffer).unwrap());
-        //             std::process::exit(0);
-        //         }
-        //     }
-        // }
     }
 }
