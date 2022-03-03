@@ -70,17 +70,36 @@ unsafe fn spawn_pty_with_shell(default_shell: String) -> bipty {
 }
 
 // Execute a command with user input, by flushing master file descripter.
-fn pty_execute(master_file: &mut File, command: &str) {
+fn pty_execute(mfd: RawFd, command: &str) {
+    let mut master_file = unsafe { File::from_raw_fd(mfd) };
     // Change the file buffer.
     write!(master_file, "{}", command).unwrap();
     // Write it out.
     master_file.flush().unwrap();
 }
 
-fn read_from_master(master_file: &mut File) {
-    let mut read_buffer = String::new();
-    master_file.read_to_string(&mut read_buffer).unwrap();
-    println!("master file descriptor: {}", read_buffer);
+// fn read_from_master(mfd: RawFd) {
+//     let mut master_file = unsafe { File::from_raw_fd(mfd) };
+
+//     let mut read_buffer = String::new();
+//     master_file.read_to_string(&mut read_buffer).unwrap(); // Execution stops here.
+//     println!("master file descriptor content: {}", read_buffer);
+// }
+
+fn read_from_master_fd(mfd: RawFd) {
+    let mut read_buffer: Vec<u8> = vec![];
+
+    loop {
+        match read_from_fd(mfd) {
+            Some(mut read_bytes) => {
+                read_buffer.append(&mut read_bytes);
+            }
+            None => {
+                println!("{:?}", String::from_utf8(read_buffer).unwrap());
+                break;
+            }
+        }
+    }
 }
 
 fn main() {
@@ -94,18 +113,18 @@ fn main() {
         // Spawn pty with shell path.
         let bidirect_pty = spawn_pty_with_shell(default_shell);
 
-        let mut master_file = File::from_raw_fd(bidirect_pty.mfd);
         // let mut slave_file = File::from_raw_fd(bidirect_pty.sfd);
   
         // read_from_master(&mut master_file.try_clone().unwrap());
 
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        pty_execute(&mut master_file, command2);
+        pty_execute(bidirect_pty.mfd, command2);
         
-        read_from_master(&mut master_file);
+        // read_from_master(&mut master_file);
+        read_from_master_fd(bidirect_pty.mfd);
 
-        pty_execute(&mut master_file, command1);
+        pty_execute(bidirect_pty.mfd, command1);
 
         std::process::exit(0);
     }
