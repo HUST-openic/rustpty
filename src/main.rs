@@ -6,7 +6,7 @@ use std::process::{Command, Child};
 use std::vec;
 use std::fs::File;
 use std::io::{Write, Read};
-use std::os::unix::io::FromRawFd;
+use std::os::unix::io::{ IntoRawFd, FromRawFd };
 use std::process::Stdio;
 
 // Vec<u8>: UTF8 encoded sequences.
@@ -73,43 +73,51 @@ unsafe fn spawn_pty_with_shell(default_shell: String) -> bipty {
 }
 
 // Execute a command with user input, by flushing master file descripter.
-fn pty_execute(mfd: RawFd, command: &str) {
+fn pty_execute(mfd: RawFd, command: &str) -> RawFd {
     let mut master_file = unsafe { File::from_raw_fd(mfd) };
     // Write command to the file descriptor.
     write!(master_file, "{}", command).unwrap();
     master_file.flush().unwrap();
+    master_file.into_raw_fd()
 }
 
 // Error: Bad file descriptor code 9.
-// fn read_from_master(mfd: RawFd) -> String {
-//     let mut master_file = unsafe { File::from_raw_fd(mfd) };
+fn read_from_master(mfd: RawFd) -> String {
+    println!("1");
+    let mut master_file = unsafe { File::from_raw_fd(mfd) };
 
-//     let mut read_buffer = String::new();
-//     master_file.read_to_string(&mut read_buffer).unwrap(); // Execution stops here.
-//     format!("Master file content: {}", read_buffer)
-// }
-
-fn read_from_master_fd(mfd: RawFd) -> String {
-    let mut read_buffer: Vec<u8> = vec![];
-
-    loop {
-        match read_from_fd(mfd) {
-            Some(mut read_bytes) => {
-                read_buffer.append(&mut read_bytes);
-            }
-            None => {
-                break;
-            }
-        }
-    }
-
-    format!("{:?}", String::from_utf8(read_buffer).unwrap())
+    println!("2");
+    let mut read_buffer = String::new();
+    // Unable to run this line.
+    master_file.read_to_string(&mut read_buffer).unwrap(); // Execution stops here.
+    println!("{:?}", read_buffer);
+    format!("Master file content: {}", read_buffer)
 }
+
+// fn read_from_master_fd(mfd: RawFd) -> String {
+//     let mut read_buffer: Vec<u8> = vec![];
+
+//     loop {
+//         match read_from_fd(mfd) {
+//             Some(mut read_bytes) => {
+//                 read_buffer.append(&mut read_bytes);
+//             }
+//             None => {
+//                 break;
+//             }
+//         }
+//     }
+
+//     format!("{:?}", String::from_utf8(read_buffer).unwrap())
+// }
 
 //TODO: Read from the master file without pending the terminal or panic with Bad file desciptor code 9.
 fn main() {
     let command1 = "touch /home/hzb/Desktop/itworks\n";
     let command2 = "echo hzb\n";
+
+    let cmdstream = "python3";
+    let cmdstream = "import numpy as np";
 
     // Get default shell path.
     let default_shell = std::env::var("SHELL")
@@ -124,14 +132,16 @@ fn main() {
 
         std::thread::sleep(std::time::Duration::from_secs(1));
 
-        let content: String = read_from_master_fd(bidirect_pty.mfd);
-
-        pty_execute(bidirect_pty.mfd, command2);
+        
+        let fd= pty_execute(bidirect_pty.mfd, cmdstream);
+        let content: String = read_from_master_(fd);
+        // pty_execute(bidirect_pty.mfd, cmdstream);
         
         println!("{}", content);
 
         // pty_execute(bidirect_pty.mfd, command1);
 
+        std::thread::sleep(std::time::Duration::from_secs(1));
         std::process::exit(0);
     }
 }
