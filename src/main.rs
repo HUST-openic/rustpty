@@ -134,7 +134,7 @@ fn main() {
 
         
         let fd= pty_execute(bidirect_pty.mfd, cmdstream);
-        let content: String = read_from_master_(fd);
+        let content: String = read_from_master(fd);
         // pty_execute(bidirect_pty.mfd, cmdstream);
         
         println!("{}", content);
