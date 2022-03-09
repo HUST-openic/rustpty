@@ -8,6 +8,7 @@ pub struct Tab {
 }
 
 impl Tab {
+    //TODO: use this.
     pub fn writer(&self) -> RefMut<dyn std::io::Write> {
         self.pty.borrow_mut()
     }
