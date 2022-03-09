@@ -113,19 +113,15 @@ fn read_from_tab_pty(mut reader: Box<dyn std::io::Read>) {
             Ok(size) => {
                 lim.blocking_admittance_check(size as u32);
                 let data = buf[0..size].to_vec();
+                println!("{:?}", data);
                 spawn_into_main_thread_with_low_priority(async move {
                     let mux = Mux::get().unwrap();
                     let tab = mux.get_tab();
-                    // tab.advance_bytes(&data, &mut Host { writer: &mut *tab.writer() });
                 });
             }
         }
     }
 }
-
-// struct Host<'a> {
-//     writer: &'a mut dyn std::io::Write,
-// }
 
 thread_local! {
     static MUX: RefCell<Option<Rc<Mux>>> = RefCell::new(None);
@@ -135,7 +131,10 @@ impl Mux {
     pub fn new(size: PtySize) -> anyhow::Result<Self> {
         let pty_system = Box::new(unix::UnixPtySystem);
         let pair = pty_system.openpty(size)?;
+
+        println!("Running system shell: {}", crate::pty::get_shell()?);
         let child = pair.slave.spawn_command(Command::new(crate::pty::get_shell()?))?;
+
 
         let tab = Tab::new(child, pair.master);
 
