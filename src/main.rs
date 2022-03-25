@@ -1,5 +1,6 @@
 mod raw_guard;
 
+
 // TODO: Input should not from stdin but from xtermjs (as String).
 // TODO: Better to send String to xtermjs directly instead of looping content.
 // TODO: To work with tauri events, additional buffers is needed for both input & output.
@@ -154,8 +155,3 @@ fn main() {
             .unwrap_or_else(|| status.signal().unwrap_or(0) + 128),
     );
 }
-
-// #[cfg(not(feature = "backend-std"))]
-// fn main() {
-//     unimplemented!()
-// }
