@@ -55,8 +55,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pty-process"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5c0159357669a990d96531d7095fd9d5eaa9f59d3d7d522f65b438dc8d1c109"
+dependencies = [
+ "libc",
+ "nix",
+]
+
+[[package]]
 name = "rustcmd"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "nix",
+ "pty-process",
 ]

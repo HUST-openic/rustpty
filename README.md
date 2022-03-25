@@ -10,3 +10,7 @@ TODO:
 
 - Pass keyboard input to shell.
 - Get shell output for terminal - GOODY!.
+
+## Current successful implementation
+
+The current solution for web emulated terminal PTY is use rust *pty_process* to open default python interactive shell. There are TODOs for engineering work. See the code for more.

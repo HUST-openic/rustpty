@@ -1,77 +1,161 @@
-use nix::pty::forkpty;
-use nix::unistd::ForkResult;
-use nix::unistd::read;
-use std::os::unix::io::RawFd;
-use std::process::Command;
-use std::vec;
+mod raw_guard;
 
-// Vec<u8>: UTF8 encoded sequences.
+// TODO: Input should not from stdin but from xtermjs (as String).
+// TODO: Better to send String to xtermjs directly instead of looping content.
+// TODO: To work with tauri events, additional buffers is needed for both input & output.
 
-// Read from file descriptor.
-fn read_from_fd(fd: RawFd) -> Option<Vec<u8>> {
-    // Temp buffer with limited size.
-    let mut read_buffer = [0; 65536];
+// #[cfg(feature = "backend-std")]
+mod main {
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::io::AsRawFd as _;
 
-    // Read from file descriptor to the buffer.
-    let read_result = read(fd, &mut read_buffer);
+    pub fn run(child: &pty_process::std::Child) {
+        let _raw = super::raw_guard::RawGuard::new();
+        let mut buf = [0_u8; 4096];
+        let pty = child.pty().as_raw_fd();
+        let stdin = std::io::stdin().as_raw_fd();
 
-    // Match Result to Option.
-    match read_result {
-        // Truncate buffer size. Only return content.
-        Ok(bytes_read) => Some(read_buffer[..bytes_read].to_vec()),
-        Err(_) => None,
-    }
-}
-
-// Spawn pty with shell path.
-// Returns raw file descriptor for the shell.
-unsafe fn spawn_pty_with_shell(default_shell: String) -> RawFd {
-    match forkpty(None, None) {
-        // Spawn successful.
-        Ok(for_pty_res) => {
-            let stdout_fd = for_pty_res.master;
-            // If the result is a child process, spawn a new shell.
-            if let ForkResult::Child = for_pty_res.fork_result {
-                Command::new(&default_shell)
-                .spawn()
-                .expect("failed to spawn");
-
-                // wait for 2s and then exit.
-                std::thread::sleep(std::time::Duration::from_millis(2000));
-                std::process::exit(0);
-            }
-            stdout_fd
-        },
-        Err(e) => {
-            panic!("failed to fork {:?}", e);
-        }
-    }
-}
-
-fn main() {
-    // Get default shell path.
-    let default_shell = std::env::var("SHELL")
-        .expect("could not find default shell from &SHELL"); // /bin/bash
-    unsafe {
-        // Spawn pty with shell path.
-        let stdout_fd = spawn_pty_with_shell(default_shell);
-
-        // Buffer.
-        let mut read_buffer: Vec<u8> = vec![];
-        
-        // Constantly loop through contents if read_from_fd returns content.
         loop {
-            match read_from_fd(stdout_fd) {
-                // Add to the buffer with contents.
-                Some(mut read_bytes) => {
-                    read_buffer.append(&mut read_bytes);
-                },
-                None => {
-                    println!("{:?}", String::from_utf8(read_buffer).unwrap());
-                    std::process::exit(0);
+            let mut set = nix::sys::select::FdSet::new();
+            set.insert(pty);
+            set.insert(stdin);
+            match nix::sys::select::select(
+                None,
+                Some(&mut set),
+                None,
+                None,
+                None,
+            ) {
+                Ok(n) => {
+                    if n > 0 {
+                        if set.contains(pty) {
+                            match child.pty().read(&mut buf) {
+                                Ok(bytes) => {
+                                    let buf = &buf[..bytes];
+                                    let stdout = std::io::stdout();
+                                    let mut stdout = stdout.lock();
+                                    stdout.write_all(buf).unwrap();
+                                    stdout.flush().unwrap();
+                                }
+                                Err(e) => {
+                                    // EIO means that the process closed the other
+                                    // end of the pty
+                                    if e.raw_os_error() != Some(libc::EIO) {
+                                        eprintln!("pty read failed: {:?}", e);
+                                    }
+                                    break;
+                                }
+                            };
+                        }
+                        if set.contains(stdin) {
+                            match std::io::stdin().read(&mut buf) {
+                                Ok(bytes) => {
+                                    let buf = &buf[..bytes];
+                                    child.pty().write_all(buf).unwrap();
+                                }
+                                Err(e) => {
+                                    eprintln!("stdin read failed: {:?}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("select failed: {:?}", e);
+                    break;
                 }
             }
         }
     }
 
+    pub fn run_with_result(child: &pty_process::std::Child) {
+        let _raw = super::raw_guard::RawGuard::new();
+        let mut buf = [0_u8; 4096];
+        let pty = child.pty().as_raw_fd();
+        let stdin = std::io::stdin().as_raw_fd();
+        let mut result: Vec<u8> = vec![];
+
+        loop {
+            let mut set = nix::sys::select::FdSet::new();
+            set.insert(pty);
+            set.insert(stdin);
+            match nix::sys::select::select(
+                None,
+                Some(&mut set),
+                None,
+                None,
+                None,
+            ) {
+                Ok(n) => {
+                    if n > 0 {
+                        if set.contains(pty) {
+                            match child.pty().read(&mut buf) {
+                                Ok(bytes) => {
+                                    let buf = &buf[..bytes];
+                                    let stdout = std::io::stdout();
+                                    let mut stdout = stdout.lock();
+                                    // println!("{}", String::from_utf8(buf.to_vec()).unwrap());
+                                    result.extend(buf.to_vec());
+                                    stdout.write_all(buf).unwrap();
+                                    stdout.flush().unwrap();
+                                }
+                                Err(e) => {
+                                    // EIO means that the process closed the other
+                                    // end of the pty
+                                    if e.raw_os_error() != Some(libc::EIO) {
+                                        eprintln!("pty read failed: {:?}", e);
+                                    }
+                                    break;
+                                }
+                            };
+                        }
+                        if set.contains(stdin) {
+                            match std::io::stdin().read(&mut buf) {
+                                Ok(bytes) => {
+                                    let buf = &buf[..bytes];
+                                    child.pty().write_all(buf).unwrap();
+                                }
+                                Err(e) => {
+                                    eprintln!("stdin read failed: {:?}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("select failed: {:?}", e);
+                    break;
+                }
+            }
+            println!("{}", String::from_utf8(result.clone()).unwrap());
+        }
+
+    }
 }
+
+// #[cfg(feature = "backend-std")]
+fn main() {
+    use pty_process::Command as _;
+    use std::os::unix::process::ExitStatusExt as _;
+
+    let mut child = std::process::Command::new("python3")
+        // .args(&["500"])
+        .spawn_pty(Some(&pty_process::Size::new(24, 80)))
+        .unwrap();
+
+    main::run(&child);
+
+    let status = child.wait().unwrap();
+    std::process::exit(
+        status
+            .code()
+            .unwrap_or_else(|| status.signal().unwrap_or(0) + 128),
+    );
+}
+
+// #[cfg(not(feature = "backend-std"))]
+// fn main() {
+//     unimplemented!()
+// }
